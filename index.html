@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Earth 3D — Interactive Planet Explorer</title>
+  <meta name="description" content="Interactive 3D Earth explorer built with Three.js: real country borders, cities, day/night lighting, clouds and atmosphere.">
+  <meta name="theme-color" content="#03060d">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='20' fill='%23153a6b'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%234fd1ff' stroke-width='3'/%3E%3Cellipse cx='32' cy='32' rx='29' ry='10' fill='none' stroke='%237c8cff' stroke-width='2.5' transform='rotate(-25 32 32)'/%3E%3C/svg%3E">
+
+  <!-- Fonts are optional: the UI falls back to system fonts when offline. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css?v=20261012-6">
+
+  <!-- three.js is vendored in ./lib so the app works without a CDN. -->
+  <!--
+    The ?v= tag gives each release of the app's own modules new URLs, so a browser can never
+    combine a freshly downloaded module with a stale cached one. Change it (here and on app.js
+    at the end of the page) whenever a .js file changes.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./lib/three.module.min.js",
+        "three/addons/": "./lib/addons/",
+        "./aircraft.js": "./aircraft.js?v=20261012-6",
+        "./audio.js": "./audio.js?v=20261012-6",
+        "./controls.js": "./controls.js?v=20261012-6",
+        "./explosions.js": "./explosions.js?v=20261012-6",
+        "./flight.js": "./flight.js?v=20261012-6",
+        "./geo.js": "./geo.js?v=20261012-6",
+        "./shaders.js": "./shaders.js?v=20261012-6",
+        "./su30.js": "./su30.js?v=20261012-6",
+        "./tiles.js": "./tiles.js?v=20261012-6"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- WebGL canvas is injected here -->
+  <div id="scene" class="scene"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div id="labels" class="labels" aria-hidden="true"></div>
+  <div id="tooltip" class="tooltip" role="tooltip"></div>
+  <div id="flash" class="flash" aria-hidden="true"></div>
+
+  <!-- ============ Top left: brand ============ -->
+  <header class="brand ui" style="--d: 0">
+    <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <radialGradient id="bm-g" cx="38%" cy="35%" r="70%">
+          <stop offset="0" stop-color="#7fe3ff"/>
+          <stop offset=".55" stop-color="#1d5fa8"/>
+          <stop offset="1" stop-color="#0a1f3f"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="13" fill="url(#bm-g)"/>
+      <ellipse cx="24" cy="24" rx="21" ry="7.5" fill="none" stroke="#7c8cff" stroke-width="1.6" transform="rotate(-24 24 24)" opacity=".85"/>
+      <circle cx="42.2" cy="16" r="2.2" fill="#ffd27a"/>
+    </svg>
+    <div class="brand-text">
+      <h1>EARTH 3D</h1>
+      <p>Interactive Planet Explorer</p>
+    </div>
+  </header>
+
+  <!-- ============ Top right: search ============ -->
+  <div class="search ui" style="--d: 1" role="search">
+    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4.2-4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <input id="search-input" type="text" placeholder="Search country or city..." autocomplete="off" spellcheck="false"
+           role="combobox" aria-label="Search country or city" aria-controls="search-results" aria-expanded="false" aria-autocomplete="list">
+    <button id="search-clear" class="search-clear" type="button" aria-label="Clear search" hidden>×</button>
+    <kbd class="search-kbd" aria-hidden="true">/</kbd>
+    <ul id="search-results" class="search-results glass" role="listbox" hidden></ul>
+  </div>
+
+  <!-- ============ Left: layers panel ============ -->
+  <aside id="layers-panel" class="panel layers-panel glass ui" style="--d: 2" aria-label="Layers">
+    <div class="panel-head">
+      <h2>Layers</h2>
+      <button class="icon-btn panel-toggle" type="button" data-collapse="layers-panel" aria-label="Collapse layers panel" aria-expanded="true">
+        <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="icon-btn panel-close" type="button" data-close="layers-panel" aria-label="Close layers panel">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="layer-list">
+        <label class="layer" data-tooltip="Earth surface imagery (off = hologram grid)">
+          <span class="layer-ico">🌍</span><span class="layer-name">Earth</span>
+          <input type="checkbox" class="switch" data-layer="earth">
+        </label>
+        <label class="layer" data-tooltip="Cloud layer (C)">
+          <span class="layer-ico">☁</span><span class="layer-name">Clouds</span>
+          <input type="checkbox" class="switch" data-layer="clouds">
+        </label>
+        <label class="layer" data-tooltip="Country borders (B)">
+          <span class="layer-ico">🌐</span><span class="layer-name">Borders</span>
+          <input type="checkbox" class="switch" data-layer="borders">
+        </label>
+        <label class="layer" data-tooltip="Country name labels (L)">
+          <span class="layer-ico">🏷</span><span class="layer-name">Countries</span>
+          <input type="checkbox" class="switch" data-layer="countries">
+        </label>
+        <label class="layer" data-tooltip="City markers &amp; names (M)">
+          <span class="layer-ico">🏙</span><span class="layer-name">Cities</span>
+          <input type="checkbox" class="switch" data-layer="cities">
+        </label>
+        <label class="layer" data-tooltip="City lights on the night side">
+          <span class="layer-ico">✨</span><span class="layer-name">Night Lights</span>
+          <input type="checkbox" class="switch" data-layer="nightLights">
+        </label>
+        <label class="layer" data-tooltip="Atmospheric glow">
+          <span class="layer-ico">🔵</span><span class="layer-name">Atmosphere</span>
+          <input type="checkbox" class="switch" data-layer="atmosphere">
+        </label>
+      </div>
+
+      <div class="panel-sub">Detail (zoom in)</div>
+      <div class="layer-list">
+        <label class="layer" data-tooltip="Satellite photos streamed when you zoom in (Esri World Imagery)">
+          <span class="layer-ico">🛰</span><span class="layer-name">HD Imagery</span>
+          <input type="checkbox" class="switch" data-layer="imagery">
+        </label>
+        <label class="layer" data-tooltip="Real elevation data: tilt the view to see mountains and valleys (T)">
+          <span class="layer-ico">🏔</span><span class="layer-name">3D Terrain</span>
+          <input type="checkbox" class="switch" data-layer="terrain">
+        </label>
+        <label class="layer" data-tooltip="Place names and precise boundaries at city level (Esri)">
+          <span class="layer-ico">🗺</span><span class="layer-name">Map Labels</span>
+          <input type="checkbox" class="switch" data-layer="mapLabels">
+        </label>
+      </div>
+
+      <div class="panel-sub">Lighting</div>
+      <div class="layer-list">
+        <label class="layer" data-tooltip="Sun-based day/night shading">
+          <span class="layer-ico">☀</span><span class="layer-name">Realistic Lighting</span>
+          <input type="checkbox" class="switch" data-layer="realistic">
+        </label>
+        <label class="layer" data-tooltip="Day / night boundary line">
+          <span class="layer-ico">◐</span><span class="layer-name">Terminator</span>
+          <input type="checkbox" class="switch" data-layer="terminator">
+        </label>
+      </div>
+
+      <div class="panel-sub">Rendering quality</div>
+      <div class="seg seg-quality" role="radiogroup" aria-label="Rendering quality">
+        <button type="button" data-quality="auto" role="radio">Auto</button>
+        <button type="button" data-quality="high" role="radio">High</button>
+        <button type="button" data-quality="medium" role="radio">Med</button>
+        <button type="button" data-quality="low" role="radio">Low</button>
+      </div>
+      <p id="quality-note" class="quality-note"></p>
+
+      <div class="panel-sub">Controls</div>
+      <div class="setting" data-tooltip="How fast dragging rotates the globe, and how fast right-drag tilts and turns the view">
+        <label class="setting-row" for="sensitivity">
+          <span class="layer-ico">🖐</span>
+          <span class="layer-name">Rotation sensitivity</span>
+          <span id="sensitivity-value" class="setting-value">100%</span>
+        </label>
+        <input id="sensitivity" type="range" min="20" max="150" step="5" value="100" aria-label="Rotation sensitivity">
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ Right: information panel ============ -->
+  <aside id="info-panel" class="panel info-panel glass ui" style="--d: 3" aria-live="polite" aria-label="Location information">
+    <div id="info-empty" class="info-empty">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".6"/>
+        <ellipse cx="32" cy="32" rx="9" ry="22" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".45"/>
+        <path d="M10 32h44M14 21h36M14 43h36" stroke="currentColor" stroke-width="1.2" opacity=".45"/>
+        <circle cx="41" cy="25" r="3.5" fill="#4fd1ff"/>
+      </svg>
+      <h2>Select a country</h2>
+      <p>Click a country on the globe or search for a country or city.</p>
+    </div>
+    <div id="info-content" class="info-content" hidden></div>
+  </aside>
+
+  <!-- ============ HUD: coordinates + FPS ============ -->
+  <div class="hud ui" style="--d: 4">
+    <div class="hud-item hud-coords" data-tooltip="Cursor position on the globe">
+      <span class="hud-k">LAT</span> <span id="hud-lat">—</span>
+      <span class="hud-k">LON</span> <span id="hud-lon">—</span>
+    </div>
+    <div class="hud-row">
+      <div class="hud-item" data-tooltip="Camera altitude above sea level">
+        <span class="hud-k">ALT</span> <span id="hud-alt">—</span>
+        <span id="hud-load" class="hud-load" aria-label="Loading imagery"></span>
+      </div>
+      <div class="hud-item" id="hud-fps" data-tooltip="Frames per second">-- FPS</div>
+    </div>
+  </div>
+
+  <!-- Compass: shown when the view is rotated or tilted; click to reset -->
+  <button id="compass" class="compass" type="button" aria-label="Reset to north-up, top-down view" data-tooltip="North up &amp; top-down view">
+    <svg id="compass-needle" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M20 4 26 20H14Z" fill="#ff5c6c"/>
+      <path d="M20 36 14 20h12Z" fill="#c7d3e8"/>
+      <text x="20" y="13.5" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">N</text>
+    </svg>
+  </button>
+
+  <!-- Credits for the streamed imagery / labels / terrain (required by the providers) -->
+  <div id="attribution" class="attribution" aria-live="off"></div>
+
+  <!-- ============ Bottom: control bar ============ -->
+  <footer class="control-bar glass ui" style="--d: 5">
+    <div class="cb-row">
+      <div class="cb-group">
+        <button type="button" class="ctrl" data-layer="earth" data-tooltip="Earth surface"><span class="ico">🌍</span><span class="lbl">Earth</span></button>
+        <button type="button" class="ctrl" data-layer="clouds" data-tooltip="Clouds (C)"><span class="ico">☁</span><span class="lbl">Clouds</span></button>
+        <button type="button" class="ctrl" data-layer="borders" data-tooltip="Borders (B)"><span class="ico">🌐</span><span class="lbl">Borders</span></button>
+        <button type="button" class="ctrl" data-layer="cities" data-tooltip="Cities (M)"><span class="ico">🏙</span><span class="lbl">Cities</span></button>
+      </div>
+      <span class="cb-sep" aria-hidden="true"></span>
+      <div class="cb-group">
+        <button type="button" class="ctrl" id="btn-night" data-tooltip="Day / Night (N)"><span class="ico">🌙</span><span class="lbl">Night</span></button>
+        <button type="button" class="ctrl" id="btn-rotate" data-tooltip="Auto rotate (Space)"><span class="ico">⟳</span><span class="lbl">Auto Rotate</span></button>
+        <div class="seg seg-speed" role="radiogroup" aria-label="Rotation speed" data-tooltip="Rotation speed">
+          <button type="button" data-speed="0.1" role="radio">0.1x</button>
+          <button type="button" data-speed="0.5" role="radio">0.5x</button>
+          <button type="button" data-speed="1" role="radio">1x</button>
+          <button type="button" data-speed="2" role="radio">2x</button>
+        </div>
+      </div>
+      <span class="cb-sep" aria-hidden="true"></span>
+      <div class="cb-group">
+        <button type="button" class="ctrl" id="btn-flight" data-tooltip="Flight Mode: fly a Su-30MK2 or F-16, shoot & bomb (F)"><span class="ico">✈️</span><span class="lbl">Fly Jet</span></button>
+        <button type="button" class="ctrl" id="btn-3d" data-tooltip="3D view: tilt to see the terrain (T) · right-drag to tilt and rotate"><span class="ico">🏔</span><span class="lbl">3D</span></button>
+        <button type="button" class="ctrl" id="btn-reset" data-tooltip="Reset view (R)"><span class="ico">⌖</span><span class="lbl">Reset</span></button>
+        <button type="button" class="ctrl" id="btn-screenshot" data-tooltip="Take Screenshot"><span class="ico">📷</span><span class="lbl">Screenshot</span></button>
+      </div>
+    </div>
+    <div class="cb-row timeline">
+      <div class="tl-clock" data-tooltip="Simulated time (UTC). Auto-rotation advances the clock.">
+        <span class="tl-k">UTC</span>
+        <span id="time-display" class="tl-time">--:--</span>
+        <span id="date-display" class="tl-date"></span>
+      </div>
+      <div class="tl-track">
+        <input id="time-slider" type="range" min="0" max="1440" step="1" value="720" aria-label="Time of day (UTC)">
+        <div class="tl-ticks" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      </div>
+      <button type="button" class="ctrl ctrl-sm" id="btn-now" data-tooltip="Jump to the current real time"><span class="lbl">Now</span></button>
+    </div>
+  </footer>
+
+  <!-- ============ Flight Mode HUD ============ -->
+  <div id="flight-hud" class="flight-hud" hidden>
+    <div class="fhud-reticle">
+      <div class="fhud-crosshair"></div>
+      <div class="fhud-pitch-ladder" id="fhud-pitch-ladder"></div>
+    </div>
+    <div class="fhud-top">
+      <div class="fhud-heading" id="fhud-heading">HDG 000°</div>
+      <div class="fhud-aircraft" id="fhud-aircraft">SU-30MK2</div>
+    </div>
+    <div class="fhud-left">
+      <div class="fhud-box">
+        <span class="fhud-lbl">SPD</span>
+        <span class="fhud-val" id="fhud-spd">450</span>
+        <span class="fhud-unit">KTS</span>
+      </div>
+      <div class="fhud-box">
+        <span class="fhud-lbl">THR</span>
+        <span class="fhud-val" id="fhud-thr">100%</span>
+        <span class="fhud-tag" id="fhud-ab">MIL</span>
+      </div>
+      <div class="fhud-box">
+        <span class="fhud-lbl">G</span>
+        <span class="fhud-val" id="fhud-g">1.0</span>
+      </div>
+    </div>
+    <div class="fhud-right">
+      <div class="fhud-box">
+        <span class="fhud-lbl">ALT</span>
+        <span class="fhud-val" id="fhud-alt">6,500</span>
+        <span class="fhud-unit">FT</span>
+      </div>
+      <div class="fhud-box">
+        <span class="fhud-lbl">V/S</span>
+        <span class="fhud-val" id="fhud-vs">+0</span>
+        <span class="fhud-unit">FPM</span>
+      </div>
+      <div class="fhud-box">
+        <span class="fhud-lbl">WPN</span>
+        <span class="fhud-val" id="fhud-wpn">FAB-250</span>
+        <span class="fhud-count" id="fhud-ammo">4</span>
+      </div>
+    </div>
+    <div class="fhud-warning" id="fhud-pullup" hidden>PULL UP</div>
+    <div class="fhud-instructions glass">
+      <div class="fhud-inst-row"><span><b>W / S</b>: Chúi / Ngóc (Pitch)</span> <span><b>Space / Chuột</b>: Bắn / Thả bom</span></div>
+      <div class="fhud-inst-row"><span><b>A / D</b>: Lượn / Nghiêng (Roll) · <b>Q / E</b>: Lái hướng</span> <span><b>1 / 2 / 3</b> hoặc <b>B</b>: Đổi vũ khí</span></div>
+      <div class="fhud-inst-row"><span><b>Shift / Ctrl</b>: Tăng / Giảm ga</span> <span><b>C</b>: Góc nhìn · <b>P</b>: Đổi máy bay · <b>R</b>: Nạp đạn · <b>F</b>: Thoát</span></div>
+    </div>
+    <button id="fhud-exit" class="fhud-exit-btn glass" type="button" aria-label="Exit flight mode">✕ Thoát bay (F)</button>
+  </div>
+
+  <!-- Mobile: button that opens the layers panel -->
+  <button id="layers-fab" class="fab ui" type="button" style="--d: 2" aria-label="Open layers panel" aria-controls="layers-panel">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m3 13 9 5 9-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+  </button>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <!-- ============ Loading screen ============ -->
+  <div id="loading" class="loading" role="status" aria-live="polite">
+    <div class="loading-inner">
+      <div class="loader-orbit" aria-hidden="true">
+        <span class="lo-planet"></span>
+        <span class="lo-ring r1"></span>
+        <span class="lo-ring r2"></span>
+      </div>
+      <h1 class="loading-title">EARTH 3D</h1>
+      <p id="loading-text" class="loading-text">Loading planet...</p>
+      <div class="progress" aria-hidden="true"><div id="progress-bar" class="progress-bar"></div></div>
+      <p id="loading-detail" class="loading-detail">Starting renderer</p>
+    </div>
+  </div>
+
+  <!--
+    Classic (non-module) script: reports problems that would otherwise leave a blank page,
+    e.g. opening index.html directly from disk or a browser without ES module support.
+  -->
+  <script>
+    (function () {
+      function fail(title, detail) {
+        var text = document.getElementById('loading-text');
+        var info = document.getElementById('loading-detail');
+        var root = document.getElementById('loading');
+        if (!text || !root) return;
+        root.classList.add('error');
+        text.textContent = title;
+        info.innerHTML = detail;
+      }
+      if (location.protocol === 'file:') {
+        fail('Please run Earth 3D from a local web server',
+          'Browsers block textures and data loaded from <code>file://</code>.<br>' +
+          'In the <b>earth-3d</b> folder run <code>python -m http.server 8000</code> or <code>npx serve</code>,<br>' +
+          'then open <code>http://localhost:8000</code>.');
+        return;
+      }
+      // First script error before the start (e.g. a module that no longer matches a cached one)
+      var scriptError = null;
+      window.addEventListener('error', function (e) {
+        if (!scriptError && !window.__EARTH3D_STARTED && e.message) scriptError = e.message;
+      });
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          if (window.__EARTH3D_STARTED) return;
+          if (scriptError) {
+            fail('Earth 3D could not start',
+              'An application script could not be loaded: <code>' +
+              scriptError.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code><br>' +
+              'After an update the browser may still use old cached files: press <b>Ctrl+F5</b> ' +
+              '(Mac: <b>Cmd+Shift+R</b>) to reload them.');
+          } else {
+            fail('Earth 3D could not start',
+              'Your browser could not load the application scripts (ES modules / import maps).<br>' +
+              'Please use a recent version of Chrome, Edge, Firefox or Safari.');
+          }
+        }, 1500);
+      });
+    })();
+  </script>
+  <script type="module" src="app.js?v=20261012-6"></script>
+</body>
+</html>

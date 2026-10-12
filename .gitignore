@@ -1,0 +1,4 @@
+# Raw downloads used by scripts/build_data.py
+scripts/.cache/
+__pycache__/
+.DS_Store
