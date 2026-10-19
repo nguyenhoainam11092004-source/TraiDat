@@ -1,0 +1,369 @@
+{
+  "info": {
+    "name": "Earth 3D – kiểm tra server, dữ liệu và dịch vụ bản đồ",
+    "description": "Chạy server trước (python -m http.server 8000 trong thư mục dự án), rồi Run collection. Đổi biến baseUrl nếu dùng cổng khác.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "version",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Server local",
+      "item": [
+        {
+          "name": "Trang chính (index.html)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: text/html\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"text/html\"));",
+                  "const html = pm.response.text();",
+                  "pm.test(\"Có import map và màn hình loading\", () => {",
+                  "  pm.expect(html).to.include('type=\"importmap\"');",
+                  "  pm.expect(html).to.include('EARTH 3D');",
+                  "});",
+                  "// Lấy mã phiên bản ?v= để các request sau tải đúng file như trình duyệt",
+                  "const m = html.match(/app\\.js\\?v=([\\w.-]+)/);",
+                  "pm.test(\"Có mã phiên bản ?v= cho app.js\", () => pm.expect(m, \"không thấy app.js?v=\").to.not.be.null);",
+                  "if (m) pm.collectionVariables.set(\"version\", m[1]);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/",
+            "description": "Trang chính. Script test lưu mã phiên bản ?v= vào biến {{version}}."
+          }
+        },
+        {
+          "name": "app.js",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: javascript\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"javascript\"));",
+                  "pm.test(\"Là module khởi động của app\", () => pm.expect(pm.response.text()).to.include(\"window.__EARTH3D_STARTED\"));",
+                  "const cc = pm.response.headers.get(\"Cache-Control\");",
+                  "console.log(\"Cache-Control:\", cc || \"(không có — trình duyệt có thể dùng bản cũ trong cache)\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/app.js?v={{version}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "aircraft.js (export dùng bởi su30.js)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const js = pm.response.text();",
+                  "pm.test(\"Có đủ các export mà su30.js cần\", () => {",
+                  "  for (const name of [\"planformXZ\", \"planformZY\", \"stripeTexture\"]) pm.expect(js).to.include(\"export function \" + name);",
+                  "  pm.expect(js).to.include(\"export class JetModel\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/aircraft.js?v={{version}}",
+            "description": "Kiểm tra lỗi từng gặp: aircraft.js cũ thiếu export planformXZ làm app không khởi động."
+          }
+        },
+        {
+          "name": "su30.js",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Có lớp Su30Model\", () => pm.expect(pm.response.text()).to.include(\"export class Su30Model\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/su30.js?v={{version}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "style.css",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: text/css\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"text/css\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/style.css?v={{version}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "File không tồn tại → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/khong-ton-tai.js",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Dữ liệu",
+      "item": [
+        {
+          "name": "countries.json",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const countries = body.countries || {};",
+                  "pm.test(\"Có ít nhất 240 quốc gia/vùng lãnh thổ\", () => pm.expect(Object.keys(countries).length).to.be.at.least(240));",
+                  "pm.test(\"Việt Nam: thủ đô Hà Nội, dân số hợp lệ\", () => {",
+                  "  pm.expect(countries.VNM.capital).to.include(\"Hanoi\");",
+                  "  pm.expect(countries.VNM.population).to.be.a(\"number\").and.above(90e6);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/data/countries.json",
+            "description": ""
+          }
+        },
+        {
+          "name": "cities.json",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const cities = pm.response.json().cities;",
+                  "pm.test(\"Có 1.251 thành phố\", () => pm.expect(cities).to.have.lengthOf(1251));",
+                  "pm.test(\"Tọa độ hợp lệ\", () => cities.forEach((c) => {",
+                  "  pm.expect(c.lat, c.name).to.be.within(-90, 90);",
+                  "  pm.expect(c.lon, c.name).to.be.within(-180, 180);",
+                  "}));",
+                  "pm.test(\"Có Hà Nội\", () => pm.expect(cities.some((c) => c.name === \"Hanoi\" || c.name === \"Hà Nội\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/data/cities.json",
+            "description": ""
+          }
+        },
+        {
+          "name": "countries.geojson",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const geo = pm.response.json();",
+                  "pm.test(\"Là FeatureCollection 240 quốc gia\", () => {",
+                  "  pm.expect(geo.type).to.eql(\"FeatureCollection\");",
+                  "  pm.expect(geo.features).to.have.lengthOf(240);",
+                  "});",
+                  "pm.test(\"Mỗi feature có iso3 và Polygon/MultiPolygon\", () => geo.features.forEach((f) => {",
+                  "  pm.expect(f.properties.iso3, f.properties.name).to.be.a(\"string\");",
+                  "  pm.expect([\"Polygon\", \"MultiPolygon\"]).to.include(f.geometry.type);",
+                  "}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/data/countries.geojson",
+            "description": ""
+          }
+        },
+        {
+          "name": "Texture earth.jpg",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: image/jpeg\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"image/jpeg\"));",
+                  "pm.test(\"Ảnh > 100 KB\", () => pm.expect(pm.response.responseSize).to.be.above(100 * 1024));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/textures/earth.jpg",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Dịch vụ bên ngoài",
+      "item": [
+        {
+          "name": "Esri – ảnh vệ tinh (Hà Nội, zoom 10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: image/jpeg\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"image/jpeg\"));",
+                  "pm.test(\"Phản hồi < 5 s\", () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/10/450/813",
+            "description": "Tile ảnh vệ tinh, URL dạng /tile/{z}/{y}/{x}. Lỗi ở đây = app không có ảnh HD (vẫn chạy với texture 4K)."
+          }
+        },
+        {
+          "name": "Esri – nhãn bản đồ (Hà Nội, zoom 10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: image/png\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"image/png\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/10/450/813",
+            "description": ""
+          }
+        },
+        {
+          "name": "AWS – độ cao địa hình (Hà Nội, zoom 10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type: image/png\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"image/png\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/10/813/450.png",
+            "description": "Tile độ cao Terrarium, URL dạng /{z}/{x}/{y}.png (thứ tự x, y khác Esri)."
+          }
+        },
+        {
+          "name": "World Bank – dân số Việt Nam (dùng bởi build_data.py)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json()[1];",
+                  "pm.test(\"Có số liệu dân số mới nhất\", () => {",
+                  "  pm.expect(rows[0].value).to.be.above(90e6);",
+                  "  console.log(\"Năm\", rows[0].date, \"–\", rows[0].value.toLocaleString(), \"người\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "https://api.worldbank.org/v2/country/VNM/indicator/SP.POP.TOTL?mrnev=1&format=json",
+            "description": ""
+          }
+        }
+      ]
+    }
+  ]
+}

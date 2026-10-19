@@ -638,11 +638,13 @@ export class JetModel {
    * @param {object} o
    * @param {number} o.length    the model is scaled to this length (m)
    * @param {string} o.forward   axis its nose points to: '+z' (glTF convention), '-z', '+x' or '-x'
-   * @returns {Promise<boolean>} false when the file is missing or unreadable
+   * @returns {Promise<boolean>} false when the file is missing or unreadable, or not on this site
    */
   async loadModel(url, { length = 15, forward = '+z' } = {}) {
     let gltf;
     try {
+      // Only models shipped with the app: a glTF can reference further files, so never load one from elsewhere.
+      if (new URL(url, location.href).origin !== location.origin) throw new Error('not on this site');
       const head = await fetch(url, { method: 'HEAD', cache: 'no-store' });
       if (!head.ok) return false;
       gltf = await new GLTFLoader().loadAsync(url);

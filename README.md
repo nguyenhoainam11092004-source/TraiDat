@@ -94,12 +94,12 @@ Trình duyệt chặn đọc texture và JSON từ `file://`, nên cần chạy 
 git clone https://github.com/nguyenhoainam11092004-source/TraiDat.git
 cd TraiDat
 
-python -m http.server 8000     # hoặc: npx serve .
+python scripts/serve.py        # cổng khác: python scripts/serve.py 8080
 ```
 
-Mở <http://localhost:8000>. Có thể dùng extension **Live Server** của VS Code (chuột phải `index.html` → *Open with Live Server*). Mở thẳng `index.html` từ ổ đĩa sẽ hiện hướng dẫn thay vì trang trắng.
+Mở <http://localhost:8000>. `scripts/serve.py` giống `python -m http.server` nhưng gửi `Cache-Control: no-cache`, nên trình duyệt không giữ `index.html` cũ (kèm CSP cũ) sau khi file thay đổi, và chỉ nghe trên máy này thay vì cả mạng LAN. Mở thẳng `index.html` từ ổ đĩa sẽ hiện hướng dẫn thay vì trang trắng.
 
-> **Ghi chú cho người phát triển:** `index.html` gắn mã phiên bản `?v=…` cho mọi file JS/CSS của ứng dụng (trong import map và thẻ `<script>`/`<link>`). Sau khi sửa một file `.js` hoặc `style.css`, hãy đổi mã này để trình duyệt không trộn file mới với file cũ trong cache.
+> **Ghi chú cho người phát triển:** `index.html` gắn mã phiên bản `?v=…` cho mọi file JS/CSS của ứng dụng (trong import map và thẻ `<script>`/`<link>`). Sau khi sửa một file `.js` hoặc `style.css`, hãy đổi mã này để trình duyệt không trộn file mới với file cũ trong cache. Trang có Content-Security-Policy cho phép import map theo mã băm sha256, nên đổi mã bằng lệnh `python scripts/update_csp.py --bump <mã-mới>`: lệnh này đổi mọi `?v=` và tính lại mã băm (sửa tay mà quên mã băm thì ứng dụng không khởi động được).
 
 ---
 
@@ -193,7 +193,10 @@ Hạt được mô phỏng trên CPU và vẽ bằng instancing (một draw call
 ├── data/               countries.geojson · countries.json · cities.json
 ├── textures/           earth · earth-normal · earth-specular · clouds · night
 ├── lib/                three.js r170 (đặt sẵn, không phụ thuộc CDN), font cờ Twemoji
+├── boot.js             Báo lỗi khởi động (mở bằng file://, trình duyệt cũ, script cache cũ)
 ├── scripts/            build_data.py: tải và tạo lại data/ và textures/ từ nguồn gốc
+│                       update_csp.py: đổi mã ?v= và tính lại mã băm CSP của import map
+│                       serve.py: server chạy local, không để trình duyệt cache trang cũ
 └── docs/screenshots/   Ảnh minh họa cho README
 ```
 
@@ -231,7 +234,7 @@ tiles: {
 },
 ```
 
-`exaggeration` phóng đại độ cao địa hình (ví dụ `1.5`). Nhà cung cấp khác (MapTiler, Mapbox…) thường cần API key trong URL.
+`exaggeration` phóng đại độ cao địa hình (ví dụ `1.5`). Nhà cung cấp khác (MapTiler, Mapbox…) thường cần API key trong URL. Khi đổi nhà cung cấp, thêm host và đường dẫn mới vào `connect-src` trong thẻ Content-Security-Policy của `index.html`, nếu không trình duyệt sẽ chặn tile.
 </details>
 
 > ⚠️ **Điều khoản sử dụng:** ảnh Esri miễn phí cho mục đích phi thương mại/học tập **kèm ghi nguồn** (ứng dụng tự hiện dòng ghi nguồn khi đang dùng tile). Với sản phẩm thương mại, hãy kiểm tra điều khoản của Esri hoặc đổi nhà cung cấp.
